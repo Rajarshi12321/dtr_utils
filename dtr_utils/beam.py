@@ -2725,7 +2725,7 @@ class GenerationMixin:
             # print(tokenizer.batch_decode(beam_next_tokens))
             # print(torch.exp(beam_scores))
             if modified:
-                curr_n_indices=torch.zeros(num_beams)
+                curr_n_indices=torch.zeros(num_beams,device=input_ids.device)
                 max_ngram_token=0
                 if max_prob<threshold:
                     replace_beams=len(beam_next_tokens)-len(beam_next_tokens)//2
