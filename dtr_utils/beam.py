@@ -1723,6 +1723,7 @@ class GenerationMixin:
         negative_prompt_attention_mask: Optional[torch.Tensor] = None,
         n_grams=None,
         n_gram_threshold=0.5,
+        modified=False,
         **kwargs,
     ) -> Union[GenerateOutput, torch.LongTensor]:
         r"""
@@ -2021,6 +2022,7 @@ class GenerationMixin:
                 synced_gpus=synced_gpus,
                 n_grams=n_grams,
                 threshold=n_gram_threshold,
+                modified=modified,
                 **model_kwargs,
             )
 
@@ -2480,6 +2482,7 @@ class GenerationMixin:
         synced_gpus: bool,
         n_grams,
         threshold,
+        modified,
         **model_kwargs,
     ) -> Union[GenerateBeamOutput, torch.LongTensor]:
         r"""
@@ -2524,7 +2527,6 @@ class GenerationMixin:
         return_dict_in_generate = generation_config.return_dict_in_generate
         sequential = generation_config.low_memory
         do_sample = generation_config.do_sample
-        modified=True
         batch_size = len(beam_scorer._beam_hyps)
         num_beams = beam_scorer.num_beams
 
@@ -2652,8 +2654,8 @@ class GenerationMixin:
             
             # Store scores, attentions and hidden_states when required
             if return_dict_in_generate:
-                if output_scores:
-                    scores += (next_token_scores_processed,)
+                # if output_scores:
+                #     scores += (next_token_scores_processed,)
                 if output_logits:
                     raw_logits += (next_token_logits,)
                 if output_attentions:
@@ -2727,6 +2729,8 @@ class GenerationMixin:
             if modified:
                 curr_n_indices=torch.zeros(num_beams,device=input_ids.device)
                 max_ngram_token=0
+                cur_ngrams=[[] for i in range(num_beams)]
+                cur_ngrams_scores=[[] for i in range(num_beams)]
                 if max_prob<threshold:
                     replace_beams=len(beam_next_tokens)-len(beam_next_tokens)//2
                     all_ngram_indices=[]
@@ -2744,8 +2748,7 @@ class GenerationMixin:
                     all_ngram_tokens,unique_indices=np.unique(all_ngram_tokens,axis=0,return_index=True)
                     all_ngram_indices=all_ngram_indices[unique_indices]
                     
-                    cur_ngrams=[[] for i in range(num_beams)]
-                    cur_ngrams_scores=[[] for i in range(num_beams)]
+                   
                     for i in range(0,len(all_ngram_indices)):
                         cur_ngrams[all_ngram_indices[i]].append(all_ngram_tokens[i][0])
                         cur_ngrams_scores[all_ngram_indices[i]].append(float(all_ngram_tokens[i][1]))
@@ -2810,7 +2813,7 @@ class GenerationMixin:
                     model_kwargs["past_key_values"], beam_idx
                 )
 
-            if return_dict_in_generate and output_scores:
+            if return_dict_in_generate:
                 beam_indices = tuple((beam_indices[beam_idx[i]] + (beam_idx[i],) for i in range(len(beam_indices))))
                 # print(beam_indices)
                 if modified:
