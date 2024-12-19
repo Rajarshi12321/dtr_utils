@@ -2654,8 +2654,8 @@ class GenerationMixin:
             
             # Store scores, attentions and hidden_states when required
             if return_dict_in_generate:
-                if output_scores:
-                    scores += (next_token_scores_processed,)
+                # if output_scores:
+                #     scores += (next_token_scores_processed,)
                 if output_logits:
                     raw_logits += (next_token_logits,)
                 if output_attentions:
@@ -2813,7 +2813,7 @@ class GenerationMixin:
                     model_kwargs["past_key_values"], beam_idx
                 )
 
-            if return_dict_in_generate and output_scores:
+            if return_dict_in_generate:
                 beam_indices = tuple((beam_indices[beam_idx[i]] + (beam_idx[i],) for i in range(len(beam_indices))))
                 # print(beam_indices)
                 if modified:
