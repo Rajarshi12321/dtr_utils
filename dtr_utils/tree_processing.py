@@ -1,5 +1,7 @@
 from dtr_utils.ecd_score import alignment_score
-from anytree import Node, PreOrderIter
+from anytree import Node, PreOrderIter, AnyNode
+
+# from anytree import AnyNode
 
 
 def get_max_depth(node, depth=0):
@@ -61,8 +63,7 @@ def find_parent_of_lowest_score(root):
     # Find the leaf node with the lowest score (assuming name is numeric)
     min_score_node = min(leaf_nodes, key=lambda n: float(n.name))
 
-    # Return the parent of the node with the lowest score
-    return min_score_node.parent, float(min_score_node.name)
+    return min_score_node
 
 
 def sanitize_word(word):
@@ -80,70 +81,81 @@ def sanitize_word(word):
     return word.translate(translation_table)
 
 
-def final_tree_generate_dual(input_root, true_context):
+def get_max_depth(node, depth=0):
     """
-    Generates a plain tree by copying nodes from the input tree and computing alignment scores.
+    Calculates the maximum depth of a tree.
 
     Args:
-        input_root (Node): The root node of the input tree (prebuilt using anytree). Its name is the initial context.
-        true_context (str): The true context to compute alignment scores.
+        node (Node): The root node of the tree or subtree.
+        depth (int): The current depth in the traversal.
 
     Returns:
-        root_plain: The root node of the plain tree.
+        int: The maximum depth of the tree.
     """
-    # Initialize root node for the plain tree
-    initial_context = input_root.name  # Initial context is the name of the input root
-    root_plain = Node(f"ROOT_PLAIN = {initial_context}")
+    if not node.children:
+        return depth  # Return current depth if the node has no children
+    return max(get_max_depth(child, depth + 1) for child in node.children)
 
-    Step = 1
 
-    def traverse_and_copy(node, parent_plain, path_plain):
-        """
-        Recursively traverses the input tree and copies nodes to the plain tree.
+def min_depth(root):
+    """
+    Recursively finds the minimum depth of the tree rooted at `root`.
 
-        Args:
-            node (Node): Current node in the input tree.
-            parent_plain (Node): Current parent node in the plain tree.
-            path_plain (list): Accumulated plain text path.
-        """
-        # Extract node details
-        node_name = node.name
-        if isinstance(node_name, tuple):
-            word, score, llm_tokens, ngram_tokens, typ = node_name
-            path_plain.append(word)
-            sanitized_word = sanitize_word(word)
-        else:
-            word = node_name
-            path_plain.append(word)
-            sanitized_word = sanitize_word(word)
+    Args:
+        root (AnyNode): The root node of the tree.
 
-        # Create a new node in the plain tree
-        new_plain_node = Node(f"{sanitized_word}", parent=parent_plain)
+    Returns:
+        int: The minimum depth of the tree.
+    """
+    # Base case: if a node is a leaf (no children), the depth is 1
+    if not root.children:
+        return 1
 
-        # Traverse children
-        for child in node.children:
-            traverse_and_copy(child, new_plain_node, path_plain)
+    # Recursively find the minimum depth among all children
+    depths = [min_depth(child) for child in root.children]
 
-        # If it's a leaf node, finalize the path and add alignment score
-        if not node.children:
-            complete_text_plain = "".join(path_plain)
+    # Return the minimum depth + 1 (for the current node)
+    return min(depths) + 1
 
-            # Add the complete text to the tree
-            final_plain_node = Node(f"{complete_text_plain}", parent=new_plain_node)
 
-            # Compute alignment score
-            score = alignment_score(complete_text_plain, true_context)
-            Node(score, parent=final_plain_node)
+def count_color_in_paths(node, n_color="blue", color_count=0):
+    # Increment the color count if the current node's color matches n_color
+    try:
+        if node.n_color == n_color:
+            color_count += 1
+    except:
+        pass
+    # If the node is a leaf (no children), return the current color count for this path
+    if not node.children:
+        return [color_count]
 
-            print(f"\n\n\Step: {Step}")
-            print("Complete Text (Plain):", complete_text_plain)
-            print("Alignment Score:", score)
-            Step += 1
+    # Otherwise, traverse the children and collect color counts for each path
+    color_path_counts = []
+    for child in node.children:
+        color_path_counts.extend(count_color_in_paths(child, n_color, color_count))
 
-        # Pop the current node from the path as we backtrack
-        path_plain.pop()
+    return color_path_counts
 
-    # Start recursive traversal
-    traverse_and_copy(input_root, root_plain, [])
 
-    return root_plain
+def get_path_from_best_node(best_node):
+    """
+    Backtrack from the best_node to the root and return the path.
+
+    Args:
+        best_node (Node): The best node in the tree.
+
+    Returns:
+        list: The path from the root to the best_node (inclusive).
+    """
+    path = []
+
+    # Backtrack from best_node to the root (including the best_node itself)
+    current_node = best_node
+    while current_node:
+        path.append(current_node)
+        current_node = current_node.parent
+
+    # Reverse the list to get the path from root to best_node
+    path.reverse()
+
+    return path

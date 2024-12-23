@@ -311,10 +311,10 @@ def get_web_content(user_query, num_urls):
 
         if base_domain in domains:
             # if domain in base_domain:
-            print(base_domain, url)
+            # print(base_domain, url)
 
             text = fetch_webpage(result)
-            print(text)
+            # print(text)
 
             text = text.splitlines()
             text_combined.extend(text)

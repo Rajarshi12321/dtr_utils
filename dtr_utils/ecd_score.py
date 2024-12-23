@@ -30,16 +30,16 @@ nlp = stanza.Pipeline(
     tokenize_batch_size=500,
 )
 
-"""# Alignment Scoring"""
+# """# Alignment Scoring"""
 
-import spacy
+# import spacy
 
-if spacy.prefer_gpu():
-    print("Using GPU")
-else:
-    print("Using CPU")
+# if spacy.prefer_gpu():
+#     print("Using GPU")
+# else:
+#     print("Using CPU")
 
-nlp_spacy = spacy.load("en_core_web_sm")
+# nlp_spacy = spacy.load("en_core_web_sm")
 
 import time
 
@@ -54,7 +54,7 @@ def get_entity_vector(global_vocab, text):
 def remove_stop_words(_string):
     doc = nlp(_string)
     entities = [ent.text.lower() for ent in doc.ents]
-    doc = nlp_spacy(_string)
+    # doc = nlp_spacy(_string)
     filtered_tokens = " ".join(
         [token.text.lower() for token in doc if not token.is_stop]
     )

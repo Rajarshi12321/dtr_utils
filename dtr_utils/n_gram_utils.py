@@ -102,7 +102,7 @@ class NgramModel:
         entities = [
             ent.text.lower() for ent in doc.ents
         ]  # Get all named entities as a list of strings
-        print("Entities :", entities, "\n\n")
+        # print("Entities :", entities, "\n\n")
 
         # Initialize a list to store the tokenized entities
         tokenized_entities = []
@@ -172,7 +172,7 @@ class NgramModel:
             if len(words) >= n:
                 n_gram = " ".join(words[:n])
                 n_grams.append(n_gram)
-                print(n_gram, "Check")
+                # print(n_gram, "Check")
 
         return Counter(n_grams).most_common()
 
