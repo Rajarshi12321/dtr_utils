@@ -11,6 +11,10 @@ from concurrent.futures import ThreadPoolExecutor
 from collections import defaultdict
 import spacy
 
+from nltk.corpus import stopwords
+import string
+
+
 from anytree import Node, RenderTree
 from anytree.exporter import UniqueDotExporter
 
@@ -33,6 +37,11 @@ nlp = stanza.Pipeline(
     tokenize_batch_size=500,
 )
 
+# Initialize Stanza pipeline and NLTK stop words
+# stanza_nlp = stanza.Pipeline(lang="en", processors="tokenize,ner")
+stop_words = set(stopwords.words("english"))
+
+
 # """# Alignment Scoring"""
 
 # import spacy
@@ -54,14 +63,39 @@ def get_entity_vector(global_vocab, text):
     return text_vector
 
 
-# def remove_stop_words(_string):
-#     doc = nlp(_string)
-#     entities = [ent.text.lower() for ent in doc.ents]
-#     # doc = nlp_spacy(_string)
-#     filtered_tokens = " ".join(
-#         [token.text.lower() for token in doc if not token.is_stop]
-#     )
-#     return filtered_tokens, entities
+def remove_stop_words(_string):
+    doc = nlp(_string)
+    entities = [ent.text.lower() for ent in doc.ents]
+    # doc = nlp_spacy(_string)
+    filtered_tokens = " ".join(
+        [token.text.lower() for token in doc if not token.is_stop]
+    )
+    return filtered_tokens, entities
+
+
+def preprocess(t1, t2):
+    data = {"t1": dict(), "t2": dict()}
+    t1 = t1.splitlines()
+    t2 = t2.splitlines()
+    for i in range(len(t1)):
+        t1[i], entities = remove_stop_words(t1[i])
+        for words in entities:
+            if words not in data["t1"]:
+                data["t1"][words] = {i}
+            else:
+                data["t1"][words].add(i)
+    for i in range(len(t2)):
+        t2[i], entities = remove_stop_words(t2[i])
+        for words in entities:
+            if words not in data["t2"]:
+                data["t2"][words] = {i}
+            else:
+                data["t2"][words].add(i)
+    global_vocab = get_global_vocab(t1, t2)
+    common_ent = set(data["t1"].keys()).intersection(set(data["t2"].keys()))
+    missing_ent = set(data["t1"].keys()).difference(set(data["t2"].keys()))
+    extra_ent = set(data["t2"].keys()).difference(set(data["t1"].keys()))
+    return data, global_vocab, common_ent, extra_ent, missing_ent, t1, t2
 
 
 def get_global_vocab(t1, t2):
@@ -108,37 +142,12 @@ def get_common_entity_kldiv(text1, text2, data, global_vocab, common_entity):
     return kl_div
 
 
-# def preprocess(t1, t2):
-#     data = {"t1": dict(), "t2": dict()}
-#     t1 = t1.splitlines()
-#     t2 = t2.splitlines()
-#     for i in range(len(t1)):
-#         t1[i], entities = remove_stop_words(t1[i])
-#         for words in entities:
-#             if words not in data["t1"]:
-#                 data["t1"][words] = {i}
-#             else:
-#                 data["t1"][words].add(i)
-#     for i in range(len(t2)):
-#         t2[i], entities = remove_stop_words(t2[i])
-#         for words in entities:
-#             if words not in data["t2"]:
-#                 data["t2"][words] = {i}
-#             else:
-#                 data["t2"][words].add(i)
-#     global_vocab = get_global_vocab(t1, t2)
-#     common_ent = set(data["t1"].keys()).intersection(set(data["t2"].keys()))
-#     missing_ent = set(data["t1"].keys()).difference(set(data["t2"].keys()))
-#     extra_ent = set(data["t2"].keys()).difference(set(data["t1"].keys()))
-#     return data, global_vocab, common_ent, extra_ent, missing_ent, t1, t2
-
-
 ### Use ECD in trees
 
 
 def alignment_score(t1, t2):
     data, global_vocab, common_entity, extra_entity, missing_entity, text1, text2 = (
-        preprocess(t1, t2)
+        preprocess_batch(t1, t2)
     )
 
     if len(common_entity) == 0:
@@ -155,13 +164,13 @@ def alignment_score(t1, t2):
 def add_alignment_scores(node, context):
     # Base case: If the node is a leaf (no children), print the leaf node
     if not node.children:
-        print(f"Leaf Node: ({node.name}")
+        # print(f"Leaf Node: ({node.name}")
         t1 = node.name
 
         t2 = context
 
         score = alignment_score(t1, t2)
-        print(score)
+        # print(score)
 
         new_leaf = Node(score, parent=node)
         # node.children.append(new_leaf)
@@ -173,59 +182,111 @@ def add_alignment_scores(node, context):
         add_alignment_scores(child, context)
 
 
-# Optimized preprocessing function with caching of data and global vocab
-def preprocess(t1, t2):
-    t1 = t1.lower()
-    t2 = t2.lower()
-    # Initialize the data dictionary to store line indices for words/entities
-    data = {"t1": defaultdict(set), "t2": defaultdict(set)}
-    t1 = t1.splitlines()
-    t2 = t2.splitlines()
-
-    # Optimized entity extraction: Process all lines in parallel
-    with ThreadPoolExecutor() as executor:
-        # Processing t1 and t2 concurrently
-        t1_results = list(executor.map(remove_stop_words, t1))
-        t2_results = list(executor.map(remove_stop_words, t2))
-
-    # Aggregate results into the data dictionary for entities
-    for i, (filtered_text, entities) in enumerate(t1_results):
-        for word in entities:
-            data["t1"][word].add(i)  # Add line index to the set for the word
-
-    for i, (filtered_text, entities) in enumerate(t2_results):
-        for word in entities:
-            data["t2"][word].add(i)  # Add line index to the set for the word
-
-    # Compute global vocabulary efficiently using a single pass through both t1 and t2
-    global_vocab = get_global_vocab(t1, t2)
-
-    # Compute common, missing, and extra entities
-    common_ent = set(data["t1"]).intersection(set(data["t2"]))
-    missing_ent = set(data["t1"]).difference(set(data["t2"]))
-    extra_ent = set(data["t2"]).difference(set(data["t1"]))
-
-    return data, global_vocab, common_ent, extra_ent, missing_ent, t1, t2
+# # Optimized preprocessing function with caching of data and global vocab
+# Initialize the data dictionary to store line indices for words/entities
 
 
-def remove_stop_words(text):
+def preprocess_batch(t1, t2):
     """
-    Efficiently removes stop words and extracts entities from a text string using spaCy.
+    Preprocess a batch of texts to extract entities and filtered tokens without stopwords.
 
     Args:
-        text (str): The input text string to process.
+        texts (list): List of input texts (strings) to process.
 
     Returns:
-        filtered_text (str): Text without stop words.
-        entities (set): Extracted entities (lowercased).
+        tuple: A tuple containing the following:
+            - data: Dictionary with words as keys and their corresponding line indices as values.
+            - global_vocab: Set of all unique words in both texts.
+            - common_ent: Set of entities common to both texts.
+            - missing_ent: Set of entities missing in one text but present in the other.
+            - extra_ent: Set of entities extra in one text compared to the other.
+            - filtered_texts: List of filtered texts (without stopwords and punctuation).
     """
-    doc = nlp(text.lower())
-    entities = {ent.text.lower() for ent in doc.ents}
 
-    # Remove stop words and join the remaining tokens to form the filtered text
-    filtered_tokens = [
-        token.text.lower() for token in doc if not token.is_stop and not token.is_punct
-    ]
-    filtered_text = " ".join(filtered_tokens)
+    # # Replace \n with . in both t1 and t2
+    t1 = t1.replace("\n", ". \n")
+    t2 = t2.replace("\n", ". \n")
 
-    return filtered_text, entities
+    data = {"t1": {}, "t2": {}}
+    texts = [t1, t2]
+    # Process texts in batches with Stanza
+    docs = [nlp(text) for text in texts]  # Process the batch
+
+    filtered_t1 = ""
+    filtered_t2 = ""
+
+    stop_words_set = set(stop_words)  # Assuming stop_words is a list, convert to a set
+
+    # Iterate through the processed documents
+    for j, doc in enumerate(docs):
+        filtered_texts = []
+
+        # Iterate over sentences and words in the document
+        for i, sentence in enumerate(doc.sentences):
+
+            entities = set()
+            for ent in sentence.ents:
+                # Add the named entity text to the entities set (lowercased)
+                entities.add(ent.text.lower())
+
+            # Iterate over words in the sentence to collect filtered tokens
+            filtered_tokens = []
+            for word in sentence.words:
+                token = word.text.lower()
+
+                # Filter out stop words and punctuation
+                if token not in stop_words and token not in string.punctuation:
+                    filtered_tokens.append(token)
+
+            filtered_text = " ".join(filtered_tokens)
+            filtered_texts.append(filtered_text)
+
+            # print(filtered_tokens)
+            # print(filtered_text)
+
+            # Update the data dictionary with entities and their line indices
+            if j == 0:
+                variable = "t1"
+
+            else:
+                variable = "t2"
+
+            # print(data[variable])
+            for word in entities:
+                if word not in data[variable]:
+                    data[variable][word] = {i}
+                else:
+                    data[variable][word].add(i)
+
+        if j == 0:
+            filtered_t1 = filtered_texts
+        else:
+            filtered_t2 = filtered_texts
+        # print(filtered_texts, "KK")
+
+        # break
+
+    # Compute global vocabulary
+    global_vocab = set()
+    for text in filtered_texts:
+        global_vocab.update(text.split())
+
+    # Compute common, missing, and extra entities
+    t1_entities = set(data["t1"].keys())
+    t2_entities = set(data["t2"].keys())
+
+    common_ent = t1_entities.intersection(t2_entities)
+    missing_ent = t1_entities.difference(t2_entities)
+    extra_ent = t2_entities.difference(t1_entities)
+
+    # print(data)
+
+    return (
+        data,
+        global_vocab,
+        common_ent,
+        extra_ent,
+        missing_ent,
+        filtered_t1,
+        filtered_t2,
+    )
