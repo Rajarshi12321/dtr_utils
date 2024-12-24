@@ -159,3 +159,101 @@ def get_path_from_best_node(best_node):
     path.reverse()
 
     return path
+
+
+from tqdm import tqdm
+from anytree import AnyNode  # Assuming you're using anytree library for node structure
+
+
+def final_tree_generate_dual(input_root, true_context):
+    """
+    Generates a plain tree by copying nodes from the input tree and computing alignment scores,
+    while also storing node attributes such as id, name, parent, n_color, score, ngram tokens, and scores.
+
+    Args:
+        input_root (Node): The root node of the input tree (prebuilt using AnyNode).
+        true_context (str): The true context to compute alignment scores.
+
+    Returns:
+        root_plain: The root node of the plain tree with additional attributes.
+    """
+    # Initialize root node for the plain tree
+    initial_context = input_root.name  # Initial context is the name of the input root
+    root_plain = AnyNode(name=f"ROOT_PLAIN = {initial_context}")
+
+    # Node counter (for generating unique ids)
+    node_counter = 1
+
+    def traverse_and_copy(node, parent_plain, path_plain, level, total_nodes):
+        """
+        Recursively traverses the input tree and copies nodes to the plain tree.
+
+        Args:
+            node (AnyNode): Current node in the input tree.
+            parent_plain (AnyNode): Current parent node in the plain tree.
+            path_plain (list): Accumulated plain text path.
+            level (int): The current level of recursion.
+            total_nodes (int): Total number of nodes in the tree for tqdm progress bar.
+        """
+        nonlocal node_counter
+
+        # Extract relevant information from the node
+        next_token = node.name  # This represents the next token (name of the node)
+        n_color = node.n_color  # Color associated with the node
+        score = node.score  # The score for this node
+        ngram_tokens = node.ngram_tokens  # ngram tokens
+        ngram_scores = node.ngram_scores  # ngram scores
+        llm_tokens = node.llm_tokens  # LLM tokens
+        llm_scores = node.llm_scores  # LLM scores
+
+        # Sanitize the word for plain text display
+        sanitized_word = next_token
+        # sanitized_word = sanitize_word(next_token)
+
+        # Create a new node in the plain tree with attributes from the current node
+        new_node = AnyNode(
+            id=node.id,
+            name=sanitized_word,
+            parent=parent_plain,
+            n_color=n_color,
+            score=score,
+            ngram_tokens=ngram_tokens,
+            ngram_scores=ngram_scores,
+            llm_tokens=llm_tokens,
+            llm_scores=llm_scores,
+        )
+
+        # Traverse children (if any)
+        for child in node.children:
+            traverse_and_copy(
+                child, new_node, path_plain + [sanitized_word], level + 1, total_nodes
+            )
+
+        # If it's a leaf node, finalize the path and add alignment score
+        if not node.children:
+            complete_text_plain = "".join(path_plain)
+            # Add the complete text to the tree
+            final_plain_node = AnyNode(name=f"{complete_text_plain}", parent=new_node)
+
+            # Compute alignment score
+            score = alignment_score(complete_text_plain, true_context)
+            AnyNode(name=score, parent=final_plain_node)
+
+            # Print for debugging
+            # print(f"\n\nStep: {node_counter}")
+            # print(f"Complete Text (Plain): {complete_text_plain}")
+            # print(f"Alignment Score: {score}")
+            node_counter += 1  # Increment node id counter
+
+            # Update the progress bar
+            progress_bar.update(1)
+
+    # Count the total number of nodes to initialize the tqdm progress bar
+    # total_nodes = count_total_nodes(input_root)
+    total_nodes = len(input_root.leaves)
+
+    # Create a tqdm progress bar
+    with tqdm(total=total_nodes) as progress_bar:
+        traverse_and_copy(input_root, root_plain, [], 0, total_nodes)
+
+    return root_plain

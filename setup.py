@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="dtr_utils",  # Package name
-    version="0.0.7",  # Version
+    version="0.0.11",  # Version
     description="Utilities for Decoding Time RAG (DTR) tasks",  # Short description
     author="Rajarshi Roy",  # Your name
     author_email="royrajarshi0123@gmail.com",  # Your email
