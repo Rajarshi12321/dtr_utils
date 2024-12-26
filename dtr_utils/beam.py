@@ -1725,6 +1725,7 @@ class GenerationMixin:
         n_gram_threshold=0.5,
         modified=False,
         num_replacement=0.5,
+        do_scaling=True,
         **kwargs,
     ) -> Union[GenerateOutput, torch.LongTensor]:
         r"""
@@ -2025,6 +2026,7 @@ class GenerationMixin:
                 threshold=n_gram_threshold,
                 modified=modified,
                 num_replacement=num_replacement,
+                do_scaling=do_scaling,
                 **model_kwargs,
             )
 
@@ -2487,7 +2489,8 @@ class GenerationMixin:
         n_grams,
         threshold,
         modified,
-        num_replacement,
+        num_replacement=0.5,
+        do_scaling=True,
         **model_kwargs,
     ) -> Union[GenerateBeamOutput, torch.LongTensor]:
         r"""
@@ -2778,7 +2781,8 @@ class GenerationMixin:
                     # print("beam_scores_original",beam_scores)
                     # print("beam_scores_original_log",torch.exp(beam_scores))
                     if replace:
-                        beam_scores=self.min_max_scale(beam_scores)
+                        if do_scaling:
+                            beam_scores=self.min_max_scale(beam_scores)
                         # print("beam_scores_replaced",beam_scores)
                         # print("beam_scores_replaced_log",torch.exp(beam_scores))
                         sorted_indices = torch.argsort(beam_scores, descending=True)
@@ -3189,4 +3193,3 @@ def _relative_top_filter(
     baseline_scores_normalized[scores_normalized < probs_thresh] = base_filter_value
     scores_normalized[scores_normalized < probs_thresh] = filter_value
     return scores_normalized, baseline_scores_normalized
-
