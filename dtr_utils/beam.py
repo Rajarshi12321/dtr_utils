@@ -1724,6 +1724,7 @@ class GenerationMixin:
         n_grams=None,
         n_gram_threshold=0.5,
         modified=False,
+        num_replacement=0.5,
         **kwargs,
     ) -> Union[GenerateOutput, torch.LongTensor]:
         r"""
@@ -2023,6 +2024,7 @@ class GenerationMixin:
                 n_grams=n_grams,
                 threshold=n_gram_threshold,
                 modified=modified,
+                num_replacement=num_replacement,
                 **model_kwargs,
             )
 
@@ -2467,9 +2469,11 @@ class GenerationMixin:
         return [(token,prob,'n-gram') for token, prob in sorted_tokens]
 
     def min_max_scale(self,probs):
+        probs=torch.exp(probs)
         min_val = torch.min(probs)
         max_val = torch.max(probs)
-        return (probs-min_val)/(max_val-min_val)
+        probs=(probs-min_val)/(max_val-min_val)
+        return torch.log(probs)
     
     def _beam_search(
         self,
@@ -2483,6 +2487,7 @@ class GenerationMixin:
         n_grams,
         threshold,
         modified,
+        num_replacement,
         **model_kwargs,
     ) -> Union[GenerateBeamOutput, torch.LongTensor]:
         r"""
@@ -2692,16 +2697,12 @@ class GenerationMixin:
                     next_token_scores, n_tokens_to_keep, dim=1, largest=True, sorted=True
                 )
             
-
-            # print("inputs:",tokenizer.batch_decode(input_ids))
-            # print(extra_token_scores.shape)
-            # print("extra:",torch.topk(extra_token_scores,k=num_beams+2,dim=1,largest=True, sorted=True))
-
             # print("next__tokens",next_token_scores)
             next_indices = torch.div(next_tokens, vocab_size, rounding_mode="floor")
             next_tokens = next_tokens % vocab_size
 
-            
+            # print("next_token_scores",next_token_scores)
+            # print("next_token_scores_log",torch.exp(next_token_scores))
 
             # stateless
             beam_outputs = beam_scorer.process(
@@ -2740,14 +2741,18 @@ class GenerationMixin:
                         n_gram_tokens=self.get_ngram_tokens(tokenizer,inputs,n_grams['two_gram_probs'],n_grams['three_gram_probs'],n_grams['four_gram_probs'],replace_beams)
                         all_ngram_indices.extend([i]*len(n_gram_tokens))
                         all_ngram_tokens.extend(n_gram_tokens)
-                    
+                     
                     all_ngram_indices=np.array(all_ngram_indices)
                     all_ngram_tokens=np.array(all_ngram_tokens)
-                    all_ngram_indices=all_ngram_indices[np.argsort(all_ngram_tokens[:,1])]
-                    all_ngram_tokens=all_ngram_tokens[np.argsort(all_ngram_tokens[:,1])]
-                    all_ngram_tokens,unique_indices=np.unique(all_ngram_tokens,axis=0,return_index=True)
+                    sorting=np.argsort((-all_ngram_tokens[:,1].astype(np.float64)))
+                    all_ngram_indices=all_ngram_indices[sorting]
+                    all_ngram_tokens=all_ngram_tokens[sorting]
+                    _,unique_indices=np.unique(all_ngram_tokens[:,0],return_index=True)
+                    unique_indices=np.sort(unique_indices)
+                    all_ngram_tokens=all_ngram_tokens[unique_indices]
                     all_ngram_indices=all_ngram_indices[unique_indices]
-                    
+
+                    # print("all_ngram_tokens_unique",all_ngram_tokens)
                    
                     for i in range(0,len(all_ngram_indices)):
                         cur_ngrams[all_ngram_indices[i]].append(all_ngram_tokens[i][0])
@@ -2759,7 +2764,7 @@ class GenerationMixin:
                     # print("cur_ngram_scores:",cur_ngrams_scores)
 
                     replace=False
-                    max_ngram_token=min(len(all_ngram_tokens),num_beams//2)
+                    max_ngram_token=min(len(all_ngram_tokens),int(num_replacement*num_beams))
                     for i in range(0,max_ngram_token):
                         replace_idx=num_beams-1-i
                         n_gram_token=tokenizer.convert_tokens_to_ids(all_ngram_tokens[i][0])
@@ -2770,10 +2775,12 @@ class GenerationMixin:
                         beam_scores[replace_idx]=torch.log(torch.tensor(float(all_ngram_tokens[i][1])))
                         curr_n_indices[replace_idx]=1
 
-
+                    # print("beam_scores_original",beam_scores)
+                    # print("beam_scores_original_log",torch.exp(beam_scores))
                     if replace:
                         beam_scores=self.min_max_scale(beam_scores)
-                        
+                        # print("beam_scores_replaced",beam_scores)
+                        # print("beam_scores_replaced_log",torch.exp(beam_scores))
                         sorted_indices = torch.argsort(beam_scores, descending=True)
                         beam_next_tokens=beam_next_tokens[sorted_indices]
                         beam_scores=beam_scores[sorted_indices]
@@ -2791,9 +2798,10 @@ class GenerationMixin:
             
             # print(tokenizer.batch_decode(beam_next_tokens))
             # print(beam_next_tokens.shape)
-            # print(torch.exp(beam_scores))
+            # print("scores",torch.exp(beam_scores))
             # print(beam_idx)
-            # print("n_indices",curr_n_indices)
+            # if modified:
+            #     print("n_indices",curr_n_indices)
 
             input_ids = torch.cat([input_ids[beam_idx, :], beam_next_tokens.unsqueeze(-1)], dim=-1)
             model_kwargs = self._update_model_kwargs_for_generation(
