@@ -29,12 +29,12 @@ stanza.download("en")  # Download the English model if not already downloaded
 use_gpu = torch.cuda.is_available()
 
 # Initialize the Stanza pipeline with GPU if available
-nlp = stanza.Pipeline(
+nlp_stanza = stanza.Pipeline(
     "en",
     processors="tokenize,ner",
     use_gpu=use_gpu,  # Set GPU usage based on availability
-    batch_size=500,
-    tokenize_batch_size=500,
+    batch_size=50,
+    tokenize_batch_size=5000000,
 )
 
 # Initialize Stanza pipeline and NLTK stop words
@@ -64,7 +64,7 @@ def get_entity_vector(global_vocab, text):
 
 
 def remove_stop_words(_string):
-    doc = nlp(_string)
+    doc = nlp_stanza(_string)
     entities = [ent.text.lower() for ent in doc.ents]
     # doc = nlp_spacy(_string)
     filtered_tokens = " ".join(
@@ -210,7 +210,7 @@ def preprocess_batch(t1, t2):
     data = {"t1": {}, "t2": {}}
     texts = [t1, t2]
     # Process texts in batches with Stanza
-    docs = [nlp(text) for text in texts]  # Process the batch
+    docs = [nlp_stanza(text) for text in texts]  # Process the batch
 
     filtered_t1 = ""
     filtered_t2 = ""
@@ -290,3 +290,88 @@ def preprocess_batch(t1, t2):
         filtered_t1,
         filtered_t2,
     )
+
+
+# ---------------------Efficient Entity extraction from class--------------------------------------
+
+import string
+from nltk.corpus import stopwords
+
+
+class Get_ECD_entities:
+    def __init__(self, web_text):
+        """
+        Initializes the Get_ECD_entities class.
+
+        Args:
+            web_text (str): The input text from the web.
+            leaf_node_text (str): The text for the leaf nodes.
+        """
+        self.web_text = web_text
+        self.stop_words = set(stopwords.words("english"))
+
+        self.data = {"t1": {}, "t2": {}}
+        self.data, self.filtered_web_text = self.process_one_text(
+            self.web_text, "t1", self.data, task="initialization"
+        )
+
+    def process_one_text(self, text, key, data=None, task=None):
+        """
+        Processes a given text, filters out stopwords and punctuation,
+        and extracts entities with their sentence indices.
+
+        Args:
+            text (str): The text to be processed.
+            key (str): The key for storing data in the dictionary.
+            data (dict): The existing data dictionary (optional).
+
+        Returns:
+            tuple: A tuple containing the updated data dictionary and filtered text.
+        """
+        # Initialize data dictionary if not provided
+
+        # if data is None:
+        #     data = {}
+
+        if self.data:
+            data = self.data
+
+        # Create a sub-dictionary for the provided key
+        data[key] = {}
+
+        # Process the entire text with the global Stanza NLP pipeline
+        doc_stanza = nlp_stanza(text)  # `nlp_stanza` is assumed to be global
+
+        # Get sentences and entities from the processed document
+        sentences = doc_stanza.sentences
+        stop_words = self.stop_words  # Define the stop words list
+
+        # Initialize an empty list to collect filtered tokens
+        filtered_text = []
+
+        for i, sentence in enumerate(sentences):
+            filtered_tokens = []
+
+            # Filter tokens in the sentence
+            for word in sentence.words:
+                if (
+                    word.text.lower() not in stop_words
+                    and word.text not in string.punctuation
+                ):
+                    filtered_tokens.append(word.text.lower())
+
+            # Join tokens to reconstruct the filtered sentence
+            filtered_text.append(" ".join(filtered_tokens))
+
+            # Extract entities and update the data dictionary
+            entities = [ent.text.lower() for ent in sentence.ents]
+            for entity in entities:
+                if entity not in data[key]:
+                    data[key][entity] = {i}
+                else:
+                    data[key][entity].add(i)
+
+        if task == "initialization":
+            return data, filtered_text
+        else:
+            return data, filtered_text, self.filtered_web_text

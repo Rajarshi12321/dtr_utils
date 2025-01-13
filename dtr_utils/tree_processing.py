@@ -1,4 +1,8 @@
-from dtr_utils.ecd_score import alignment_score
+from dtr_utils.ecd_score import (
+    alignment_score,
+    get_common_entity_kldiv,
+    Get_ECD_entities,
+)
 from anytree import Node, PreOrderIter, AnyNode
 
 # from anytree import AnyNode
@@ -257,3 +261,145 @@ def final_tree_generate_dual(input_root, true_context):
         traverse_and_copy(input_root, root_plain, [], 0, total_nodes)
 
     return root_plain
+
+
+# ---------------------Tree ECD score--------------------------------------
+from anytree import AnyNode
+from tqdm import tqdm
+
+
+class TreeGenerator:
+    def __init__(self, input_root, true_context):
+        """
+        Initializes the TreeGenerator class.
+
+        Args:
+            input_root (AnyNode): The root node of the input tree (prebuilt using AnyNode).
+            true_context (str): The true context to compute alignment scores.
+        """
+        self.input_root = input_root
+        self.true_context = true_context
+        self.root_plain = None
+        self.node_counter = 1
+        self.tree_ecd = Get_ECD_entities(true_context)
+
+    def generate_tree(self):
+        """
+        Generates a plain tree by copying nodes from the input tree and computing alignment scores.
+
+        Returns:
+            AnyNode: The root node of the plain tree with additional attributes.
+        """
+        initial_context = (
+            self.input_root.name
+        )  # Initial context is the name of the input root
+        self.root_plain = AnyNode(name=f"ROOT_PLAIN = {initial_context}")
+
+        total_nodes = len(
+            self.input_root.leaves
+        )  # Count the total number of leaf nodes
+        with tqdm(total=total_nodes) as progress_bar:
+            self._traverse_and_copy(
+                self.input_root, self.root_plain, [], 0, total_nodes, progress_bar
+            )
+
+        return self.root_plain
+
+    def _traverse_and_copy(
+        self, node, parent_plain, path_plain, level, total_nodes, progress_bar
+    ):
+        """
+        Recursively traverses the input tree and copies nodes to the plain tree.
+
+        Args:
+            node (AnyNode): Current node in the input tree.
+            parent_plain (AnyNode): Current parent node in the plain tree.
+            path_plain (list): Accumulated plain text path.
+            level (int): The current level of recursion.
+            total_nodes (int): Total number of nodes in the tree for tqdm progress bar.
+            progress_bar (tqdm): Progress bar instance.
+        """
+        # Extract relevant information from the node
+        sanitized_word = node.name  # Name of the node
+        n_color = getattr(node, "n_color", None)
+        score = getattr(node, "score", None)
+        ngram_tokens = getattr(node, "ngram_tokens", None)
+        ngram_scores = getattr(node, "ngram_scores", None)
+        llm_tokens = getattr(node, "llm_tokens", None)
+        llm_scores = getattr(node, "llm_scores", None)
+
+        # Create a new node in the plain tree
+        new_node = AnyNode(
+            id=self.node_counter,
+            name=sanitized_word,
+            parent=parent_plain,
+            n_color=n_color,
+            score=score,
+            ngram_tokens=ngram_tokens,
+            ngram_scores=ngram_scores,
+            llm_tokens=llm_tokens,
+            llm_scores=llm_scores,
+        )
+
+        # Increment the node counter
+        self.node_counter += 1
+
+        # Traverse children
+        for child in node.children:
+            self._traverse_and_copy(
+                child,
+                new_node,
+                path_plain + [sanitized_word],
+                level + 1,
+                total_nodes,
+                progress_bar,
+            )
+
+        # Handle leaf nodes
+        if not node.children:
+            complete_text_plain = "".join(path_plain)
+            final_plain_node = AnyNode(name=f"{complete_text_plain}", parent=new_node)
+
+            # Compute alignment score
+            data, filtered_leaf_node_text, filtered_web_text = (
+                self.tree_ecd.process_one_text(complete_text_plain, "t2")
+            )
+
+            alignment_score_value = self._compute_alignment_score(
+                data, filtered_leaf_node_text, filtered_web_text
+            )
+            AnyNode(name=alignment_score_value, parent=final_plain_node)
+
+            # Update the progress bar
+            progress_bar.update(1)
+
+    @staticmethod
+    def process_two_texts(t1, t2, data):
+
+        # global_vocab = get_global_vocab(t1, t2)
+        common_ent = set(data["t1"].keys()).intersection(set(data["t2"].keys()))
+        missing_ent = set(data["t1"].keys()).difference(set(data["t2"].keys()))
+        extra_ent = set(data["t2"].keys()).difference(set(data["t1"].keys()))
+        # return data, global_vocab, common_ent, extra_ent, missing_ent, t1, t2
+        return data, common_ent, extra_ent, missing_ent, t1, t2
+
+    @staticmethod
+    def _compute_alignment_score(filtered_web_text, filtered_leaf_node_text, data):
+        (
+            data,
+            global_vocab,
+            common_entity,
+            extra_entity,
+            missing_entity,
+            text1,
+            text2,
+        ) = process_two_texts(filtered_web_text, filtered_leaf_node_text, data)
+
+        if len(common_entity) == 0:
+            kl_div = [1]
+        else:
+            kl_div = get_common_entity_kldiv(
+                text1, text2, data, global_vocab, common_entity
+            )
+
+        return sum(kl_div) / len(kl_div)
