@@ -298,7 +298,10 @@ domains = [
 # def get_web_content(user_query,num_results_needed):
 def get_web_content(user_query, num_urls):
 
-    all_results = search(user_query, num_results=num_urls)
+    # all_results = search(user_query, num_results=num_urls)
+    results = DDGS().text(query, max_results=num_urls)
+    all_results = [result["href"] for result in results]
+    
     t1 = time.time()
     text_combined = []
     web_context = []
@@ -359,7 +362,10 @@ def fetch_content_for_url(url):
 
 
 def get_web_content_parallelize(user_query, num_urls):
-    all_results = search(user_query, num_results=num_urls)
+    # all_results = search(user_query, num_results=num_urls)
+    results = DDGS().text(query, max_results=num_urls)
+    all_results = [result["href"] for result in results]
+
     t1 = time.time()
     text_combined = []
     web_context = []
