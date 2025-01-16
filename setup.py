@@ -28,6 +28,7 @@ setup(
         # "spacy==3.7.5",
         # "beautifulsoup4==4.12.3",
         "lxml==5.3.0",
+        "duckduckgo-search",
         "googlesearch-python==1.2.5",  # For Google search functionality
         # "huggingface_hub<= 0.25.2",
     ],
