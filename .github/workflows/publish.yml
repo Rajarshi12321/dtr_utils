@@ -23,11 +23,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install setuptools wheel twine
 
-      - name: Get version from setup.py
+      - name: Extract version from setup.py
         id: get_version
         run: |
-          # Extract version from setup.py using a regex search
-          VERSION=$(python -c "from setuptools import setup; print(setup().version)")
+          VERSION=$(python extract_version.py)
           echo "VERSION=$VERSION" >> $GITHUB_ENV
 
       - name: Build the package
