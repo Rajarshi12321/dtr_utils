@@ -26,8 +26,8 @@ jobs:
       - name: Get version from setup.py
         id: get_version
         run: |
-          # Extract version from setup.py using pkg_resources
-          VERSION=$(python -c "import pkg_resources; print(pkg_resources.get_distribution('dtr_utils').version)")
+          # Extract version from setup.py using a regex search
+          VERSION=$(python -c "from setuptools import setup; print(setup().version)")
           echo "VERSION=$VERSION" >> $GITHUB_ENV
 
       - name: Build the package
