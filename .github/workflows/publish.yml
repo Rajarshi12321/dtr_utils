@@ -9,7 +9,7 @@ jobs:
   build-and-publish:
     runs-on: ubuntu-latest
     outputs:
-      package_version: ${{ steps.get_version.outputs.version }}  # Pass version to next job
+      package_version: ${{ env.PACKAGE_VERSION }}  # Pass version to next job
 
     steps:
       - name: Checkout repository
@@ -29,8 +29,7 @@ jobs:
         id: get_version
         run: |
           VERSION=$(python extract_version.py)
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
-          echo "::set-output name=version::$VERSION"  # Store version as an output
+          echo "PACKAGE_VERSION=$VERSION" >> $GITHUB_ENV  # Use environment file
           echo "Extracted version: $VERSION"
 
       - name: Build the package
@@ -45,7 +44,7 @@ jobs:
       - name: Upload built package as artifact
         uses: actions/upload-artifact@v4
         with:
-          name: python-package-${{ steps.get_version.outputs.version }}
+          name: python-package-v${{ env.PACKAGE_VERSION }}
           path: dist/
           compression-level: 0  # Faster upload
 
@@ -53,13 +52,13 @@ jobs:
     needs: build-and-publish
     runs-on: ubuntu-latest
     env:
-      VERSION: ${{ needs.build-and-publish.outputs.package_version }}  # Retrieve version from previous job
+      PACKAGE_VERSION: ${{ needs.build-and-publish.outputs.package_version }}  # Retrieve version from previous job
 
     steps:
       - name: Download built package artifact
         uses: actions/download-artifact@v4
         with:
-          name: python-package-${{ env.VERSION }}
+          name: python-package-v${{ env.PACKAGE_VERSION }}
           path: dist/
 
       - name: Set up Python
@@ -77,5 +76,5 @@ jobs:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
         run: |
-          echo "Uploading package version $VERSION from extracted artifact..."
+          echo "Uploading package version $PACKAGE_VERSION from extracted artifact..."
           twine upload dist/*
