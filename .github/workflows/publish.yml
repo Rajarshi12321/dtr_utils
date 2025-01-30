@@ -22,7 +22,12 @@ jobs:
       - name: Check for changes in setup.py
         id: check
         run: |
-          if git fetch origin main && git diff --name-only origin/main HEAD | grep -q 'setup.py'; then
+          # Fetch the latest main branch to compare with HEAD
+          git fetch origin main
+
+          # Check if setup.py is part of the changes between origin/main and HEAD
+          CHANGES=$(git diff --name-only origin/main HEAD)
+          if echo "$CHANGES" | grep -q 'setup.py'; then
             echo "setup.py has changed."
             echo "setup_changed=true" >> $GITHUB_ENV
             echo "setup_changed=true" >> $GITHUB_OUTPUT
@@ -30,8 +35,8 @@ jobs:
             echo "No changes in setup.py. Skipping build."
             echo "setup_changed=false" >> $GITHUB_ENV
             echo "setup_changed=false" >> $GITHUB_OUTPUT
-          fi  # Closing the if block
-
+          fi
+          
   build-and-publish:
     needs: check-setup-changes
     if: needs.check-setup-changes.outputs.setup_changed == 'true'  # Only run if setup.py changed
