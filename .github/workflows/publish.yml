@@ -42,20 +42,43 @@ jobs:
       - name: Upload built package as artifact
         uses: actions/upload-artifact@v4
         with:
-          name: python-package-${{ env.VERSION }}
+          name: python-package-v${{ env.VERSION }}
           path: dist/
-          compression-level: 0  # Optional: Set to 0 for fastest uploads
+          compression-level: 0  # Faster upload
+
+  publish:
+    needs: build-and-publish
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download built package artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: python-package-v${{ env.VERSION }}
+          path: dist/
+
+      - name: Extract artifact (if zipped)
+        run: |
+          if ls dist/*.zip 1> /dev/null 2>&1; then
+            echo "Extracting zip artifact..."
+            unzip dist/*.zip -d dist/
+          fi
+          ls -lh dist/
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.x"
+
+      - name: Install Twine
+        run: |
+          python -m pip install --upgrade pip
+          pip install twine
 
       - name: Upload package to PyPI
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
         run: |
-          # Ensure the versioned files exist before uploading
-          VERSION_FILES=$(ls dist/*${VERSION}* 2>/dev/null || echo "")
-          if [ -n "$VERSION_FILES" ]; then
-            echo "Uploading version $VERSION to PyPI..."
-            twine upload $VERSION_FILES
-          else
-            echo "No files found for version $VERSION. Skipping upload."
-          fi
+          echo "Uploading package from extracted artifact..."
+          twine upload dist/*
