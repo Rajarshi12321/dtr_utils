@@ -3,7 +3,7 @@ name: Publish Python Package
 on:
   push:
     branches:
-      - main  # Trigger the workflow on push to the main branch (or another branch of your choice)
+      - main  # Runs on push to the main branch
 
 jobs:
   build-and-publish:
@@ -28,19 +28,32 @@ jobs:
         run: |
           VERSION=$(python extract_version.py)
           echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "Extracted version: $VERSION"
 
       - name: Build the package
         run: |
           python setup.py sdist bdist_wheel
+
+      - name: Verify built files
+        run: |
+          echo "Built package files:"
+          ls -lh dist/
+
+      - name: Upload built package as artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: python-package-${{ env.VERSION }}
+          path: dist/
 
       - name: Upload package to PyPI
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
         run: |
-          # Only upload files that match the current version in the dist/ directory
-          VERSION_FILES=$(ls dist/*$VERSION*)
+          # Ensure the versioned files exist before uploading
+          VERSION_FILES=$(ls dist/*${VERSION}* 2>/dev/null || echo "")
           if [ -n "$VERSION_FILES" ]; then
+            echo "Uploading version $VERSION to PyPI..."
             twine upload $VERSION_FILES
           else
             echo "No files found for version $VERSION. Skipping upload."
