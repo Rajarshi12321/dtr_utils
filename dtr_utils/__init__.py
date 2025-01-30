@@ -5,7 +5,7 @@ import string
 
 
 import stanza
-
+import torch
 from sentence_transformers import SentenceTransformer
 
 model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
