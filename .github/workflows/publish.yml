@@ -40,10 +40,11 @@ jobs:
           ls -lh dist/
 
       - name: Upload built package as artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: python-package-${{ env.VERSION }}
           path: dist/
+          compression-level: 0  # Optional: Set to 0 for fastest uploads
 
       - name: Upload package to PyPI
         env:
