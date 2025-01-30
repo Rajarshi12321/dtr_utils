@@ -22,7 +22,7 @@ jobs:
       - name: Check for changes in setup.py
         id: check
         run: |
-          if git diff --name-only HEAD^ HEAD | grep -q 'setup.py'; then
+          if git fetch origin main && git diff --name-only origin/main HEAD | grep -q 'setup.py'; then
             echo "setup.py has changed."
             echo "setup_changed=true" >> $GITHUB_ENV
             echo "setup_changed=true" >> $GITHUB_OUTPUT
