@@ -1,5 +1,8 @@
 # import dtr_utils.beam
 
+import nltk
+
+nltk.download("stopwords")
 from nltk.corpus import stopwords
 import string
 
