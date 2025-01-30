@@ -6,10 +6,10 @@ on:
       - main  # Runs on push to the main branch
     paths:
       - "setup.py"  # Only trigger when 'setup.py' is changed
-    paths-ignore:
-      - "**/*.md"  # Ignore Markdown files
-      - "**/*.txt"  # Ignore text files
-      - "**/*"      # Ignore any other files except 'setup.py'
+    # paths-ignore:
+    #   - "**/*.md"  # Ignore Markdown files
+    #   - "**/*.txt"  # Ignore text files
+    #   - "**/*"      # Ignore any other files except 'setup.py'
 
 jobs:
   build-and-publish:
