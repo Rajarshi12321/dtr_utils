@@ -3,43 +3,16 @@ name: Publish Python Package
 on:
   push:
     branches:
-      - main  # Runs only on push to main branch
+      - main  # Runs on push to the main branch
+    paths:
+      - "setup.py"  # Only trigger when 'setup.py' is changed
     paths-ignore:
       - "**/*.md"  # Ignore Markdown files
-      - "**/*.txt" # Ignore text files
- 
+      - "**/*.txt"  # Ignore text files
+      - "**/*"      # Ignore any other files except 'setup.py'
 
 jobs:
-  check-setup-changes:
-    runs-on: ubuntu-latest
-    outputs:
-      setup_changed: ${{ steps.check.outputs.setup_changed }}  # Pass result to next jobs
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Check for changes in setup.py
-        id: check
-        run: |
-          # Fetch the latest main branch to compare with HEAD
-          git fetch origin main
-
-          # Check if setup.py is part of the changes between origin/main and HEAD
-          CHANGES=$(git diff --name-only origin/main HEAD)
-          if echo "$CHANGES" | grep -q 'setup.py'; then
-            echo "setup.py has changed."
-            echo "setup_changed=true" >> $GITHUB_ENV
-            echo "setup_changed=true" >> $GITHUB_OUTPUT
-          else
-            echo "No changes in setup.py. Skipping build."
-            echo "setup_changed=false" >> $GITHUB_ENV
-            echo "setup_changed=false" >> $GITHUB_OUTPUT
-          fi
-          
   build-and-publish:
-    needs: check-setup-changes
-    if: needs.check-setup-changes.outputs.setup_changed == 'true'  # Only run if setup.py changed
     runs-on: ubuntu-latest
     outputs:
       package_version: ${{ env.PACKAGE_VERSION }}  # Pass version to next job
@@ -62,7 +35,7 @@ jobs:
         id: get_version
         run: |
           VERSION=$(python extract_version.py)
-          echo "PACKAGE_VERSION=$VERSION" >> $GITHUB_ENV  # Store version
+          echo "PACKAGE_VERSION=$VERSION" >> $GITHUB_ENV  # Use environment file
           echo "Extracted version: $VERSION"
 
       - name: Build the package
@@ -77,22 +50,21 @@ jobs:
       - name: Upload built package as artifact
         uses: actions/upload-artifact@v4
         with:
-          name: python-package-v${{ env.PACKAGE_VERSION }}
+          name: python-package-${{ env.PACKAGE_VERSION }}
           path: dist/
           compression-level: 0  # Faster upload
 
   publish:
     needs: build-and-publish
-    if: needs.build-and-publish.outputs.package_version != ''  # Only run if a package was built
     runs-on: ubuntu-latest
     env:
-      PACKAGE_VERSION: ${{ needs.build-and-publish.outputs.package_version }}  # Retrieve version
+      PACKAGE_VERSION: ${{ needs.build-and-publish.outputs.package_version }}  # Retrieve version from previous job
 
     steps:
       - name: Download built package artifact
         uses: actions/download-artifact@v4
         with:
-          name: python-package-v${{ env.PACKAGE_VERSION }}
+          name: python-package-${{ env.PACKAGE_VERSION }}
           path: dist/
 
       - name: Set up Python
