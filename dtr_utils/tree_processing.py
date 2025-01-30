@@ -1,10 +1,33 @@
+from dtr_utils.tree_processing import (
+    prune_to_max_depth,
+    final_tree_generate_dual,
+    find_parent_of_lowest_score,
+    get_max_depth,
+    min_depth,
+    get_path_from_best_node,
+    count_color_in_paths,
+)
+
+import graphviz
+from anytree import Node, AnyNode, RenderTree
+import pickle
+import sys
+import dill
+from tqdm import tqdm
+import string
+from nltk.corpus import stopwords
 from dtr_utils.ecd_score import (
     alignment_score,
+    preprocess_batch,
     get_common_entity_kldiv,
-    Get_ECD_entities,
+    get_global_vocab,
 )
-from anytree import Node, PreOrderIter, AnyNode
+import numpy as np
 
+from dtr_utils import nlp_stanza, model, stop_words
+
+
+# sys.setrecursionlimit(10000)  # Adjust the value as needed
 # from anytree import AnyNode
 
 
@@ -165,107 +188,88 @@ def get_path_from_best_node(best_node):
     return path
 
 
-from tqdm import tqdm
-from anytree import AnyNode  # Assuming you're using anytree library for node structure
+# ---------------------Tree ECD score--------------------------------------
 
 
-def final_tree_generate_dual(input_root, true_context):
-    """
-    Generates a plain tree by copying nodes from the input tree and computing alignment scores,
-    while also storing node attributes such as id, name, parent, n_color, score, ngram tokens, and scores.
-
-    Args:
-        input_root (Node): The root node of the input tree (prebuilt using AnyNode).
-        true_context (str): The true context to compute alignment scores.
-
-    Returns:
-        root_plain: The root node of the plain tree with additional attributes.
-    """
-    # Initialize root node for the plain tree
-    initial_context = input_root.name  # Initial context is the name of the input root
-    root_plain = AnyNode(name=f"ROOT_PLAIN = {initial_context}")
-
-    # Node counter (for generating unique ids)
-    node_counter = 1
-
-    def traverse_and_copy(node, parent_plain, path_plain, level, total_nodes):
+class Get_ECD_entities:
+    def __init__(self, web_text):
         """
-        Recursively traverses the input tree and copies nodes to the plain tree.
+        Initializes the Get_ECD_entities class.
 
         Args:
-            node (AnyNode): Current node in the input tree.
-            parent_plain (AnyNode): Current parent node in the plain tree.
-            path_plain (list): Accumulated plain text path.
-            level (int): The current level of recursion.
-            total_nodes (int): Total number of nodes in the tree for tqdm progress bar.
+            web_text (str): The input text from the web.
+            leaf_node_text (str): The text for the leaf nodes.
         """
-        nonlocal node_counter
+        self.nlp_stanza = nlp_stanza
+        self.web_text = web_text
+        self.stop_words = stop_words
+        # self.stop_words = set(stopwords.words("english"))
 
-        # Extract relevant information from the node
-        next_token = node.name  # This represents the next token (name of the node)
-        n_color = node.n_color  # Color associated with the node
-        score = node.score  # The score for this node
-        ngram_tokens = node.ngram_tokens  # ngram tokens
-        ngram_scores = node.ngram_scores  # ngram scores
-        llm_tokens = node.llm_tokens  # LLM tokens
-        llm_scores = node.llm_scores  # LLM scores
-
-        # Sanitize the word for plain text display
-        sanitized_word = next_token
-        # sanitized_word = sanitize_word(next_token)
-
-        # Create a new node in the plain tree with attributes from the current node
-        new_node = AnyNode(
-            id=node.id,
-            name=sanitized_word,
-            parent=parent_plain,
-            n_color=n_color,
-            score=score,
-            ngram_tokens=ngram_tokens,
-            ngram_scores=ngram_scores,
-            llm_tokens=llm_tokens,
-            llm_scores=llm_scores,
+        self.data = {"t1": {}, "t2": {}}
+        self.data, self.filtered_web_text = self.process_one_text(
+            self.web_text, "t1", self.data, task="initialization"
         )
 
-        # Traverse children (if any)
-        for child in node.children:
-            traverse_and_copy(
-                child, new_node, path_plain + [sanitized_word], level + 1, total_nodes
-            )
+    def process_one_text(self, text, key, data=None, task=None):
+        """
+        Processes a given text, filters out stopwords and punctuation,
+        and extracts entities with their sentence indices.
 
-        # If it's a leaf node, finalize the path and add alignment score
-        if not node.children:
-            complete_text_plain = "".join(path_plain)
-            # Add the complete text to the tree
-            final_plain_node = AnyNode(name=f"{complete_text_plain}", parent=new_node)
+        Args:
+            text (str): The text to be processed.
+            key (str): The key for storing data in the dictionary.
+            data (dict): The existing data dictionary (optional).
 
-            # Compute alignment score
-            score = alignment_score(complete_text_plain, true_context)
-            AnyNode(name=score, parent=final_plain_node)
+        Returns:
+            tuple: A tuple containing the updated data dictionary and filtered text.
+        """
+        # Initialize data dictionary if not provided
 
-            # Print for debugging
-            # print(f"\n\nStep: {node_counter}")
-            # print(f"Complete Text (Plain): {complete_text_plain}")
-            # print(f"Alignment Score: {score}")
-            node_counter += 1  # Increment node id counter
+        # if data is None:
+        #     data = {}
 
-            # Update the progress bar
-            progress_bar.update(1)
+        if self.data:
+            data = self.data
 
-    # Count the total number of nodes to initialize the tqdm progress bar
-    # total_nodes = count_total_nodes(input_root)
-    total_nodes = len(input_root.leaves)
+        # Create a sub-dictionary for the provided key
+        data[key] = {}
 
-    # Create a tqdm progress bar
-    with tqdm(total=total_nodes) as progress_bar:
-        traverse_and_copy(input_root, root_plain, [], 0, total_nodes)
+        # Process the entire text with the global Stanza NLP pipeline
+        doc_stanza = self.nlp_stanza(text)  # `nlp_stanza` is assumed to be global
 
-    return root_plain
+        # Get sentences and entities from the processed document
+        sentences = doc_stanza.sentences
+        stop_words = self.stop_words  # Define the stop words list
 
+        # Initialize an empty list to collect filtered tokens
+        filtered_text = []
 
-# ---------------------Tree ECD score--------------------------------------
-from anytree import AnyNode
-from tqdm import tqdm
+        for i, sentence in enumerate(sentences):
+            filtered_tokens = []
+
+            # Filter tokens in the sentence
+            for word in sentence.words:
+                if (
+                    word.text.lower() not in stop_words
+                    and word.text not in string.punctuation
+                ):
+                    filtered_tokens.append(word.text.lower())
+
+            # Join tokens to reconstruct the filtered sentence
+            filtered_text.append(" ".join(filtered_tokens))
+
+            # Extract entities and update the data dictionary
+            entities = [ent.text.lower() for ent in sentence.ents]
+            for entity in entities:
+                if entity not in data[key]:
+                    data[key][entity] = {i}
+                else:
+                    data[key][entity].add(i)
+
+        if task == "initialization":
+            return data, filtered_text
+        else:
+            return data, filtered_text, self.filtered_web_text
 
 
 class TreeGenerator:
@@ -365,11 +369,22 @@ class TreeGenerator:
                 self.tree_ecd.process_one_text(complete_text_plain, "t2")
             )
 
-            alignment_score_value = self._compute_alignment_score(
-                data, filtered_leaf_node_text, filtered_web_text
+            # print("\nData,_traverse_and_copy\n",data,"\n\n")
+            alignment_score_value, common_entity, missing_entity, extra_entity = (
+                self._compute_alignment_score(
+                    data, filtered_leaf_node_text, filtered_web_text
+                )
             )
-            AnyNode(name=alignment_score_value, parent=final_plain_node)
-
+            leaf = AnyNode(
+                name=[
+                    alignment_score_value,
+                    common_entity,
+                    missing_entity,
+                    extra_entity,
+                ],
+                parent=final_plain_node,
+            )
+            # print(alignment_score_value,leaf)
             # Update the progress bar
             progress_bar.update(1)
 
@@ -384,7 +399,7 @@ class TreeGenerator:
         return data, common_ent, extra_ent, missing_ent, t1, t2
 
     @staticmethod
-    def _compute_alignment_score(filtered_web_text, filtered_leaf_node_text, data):
+    def _compute_alignment_score(data, filtered_leaf_node_text, filtered_web_text):
         (
             data,
             global_vocab,
@@ -394,6 +409,7 @@ class TreeGenerator:
             text1,
             text2,
         ) = process_two_texts(filtered_web_text, filtered_leaf_node_text, data)
+        # print("\nData,_compute_alignment_score\n",data,"\n\n")
 
         if len(common_entity) == 0:
             kl_div = [1]
@@ -402,4 +418,60 @@ class TreeGenerator:
                 text1, text2, data, global_vocab, common_entity
             )
 
-        return sum(kl_div) / len(kl_div)
+        # return sum(kl_div) / len(kl_div), common_entity, missing_entity, extra_entity
+        return (
+            sum(kl_div) / len(kl_div),
+            len(common_entity),
+            len(missing_entity),
+            len(extra_entity),
+        )
+
+
+class TreeLeafStats:
+    def __init__(self, root):
+        self.root = root
+        self.leaf_nodes = self.get_leaf_nodes()
+        self.missing_entity_list = [node.name[2] for node in self.leaf_nodes]
+        self.extra_entity_list = [node.name[3] for node in self.leaf_nodes]
+        print(self.missing_entity_list)
+        print(self.extra_entity_list)
+        self.sd_miss = np.std(self.missing_entity_list)
+        self.sd_extra = np.std(self.extra_entity_list)
+        self.avg_kl_div = np.mean(
+            [node.name[0] for node in self.leaf_nodes if node.name[0] != -1]
+        )
+        self.ecd_scores = [self.get_score(node.name) for node in self.leaf_nodes]
+        self.extend_leaf_nodes()
+
+        # Return the modified root after initialization
+        # return self.root
+
+    def get_leaf_nodes(self):
+        return self.root.leaves
+        # return [node for node in self.root.descendants if node.is_leaf]
+
+    def get_score(self, node):
+        kl_div = node[0] if node[0] != -1 else self.avg_kl_div
+        missing = node[2]
+        extra = node[3]
+        common = node[1]
+        return (
+            kl_div
+            + self.sd_miss * ((missing * (missing + 1)) / (2 * common))
+            + self.sd_extra * ((extra * (extra + 1)) / (2 * common))
+        )
+
+    def extend_leaf_nodes(self):
+        for node, ecd_score in zip(self.leaf_nodes, self.ecd_scores):
+            # AnyNode(parent=node, name=f"ECD Score: {ecd_score}")
+            AnyNode(parent=node, name=ecd_score)
+
+    def get_stats(self):
+        return {
+            "missing_entity_sd": self.sd_miss,
+            "extra_entity_sd": self.sd_extra,
+            "ecd_scores": self.ecd_scores,
+        }
+
+    def get_root(self):
+        return self.root
