@@ -54,7 +54,7 @@ jobs:
       - name: Download built package artifact
         uses: actions/download-artifact@v4
         with:
-          name: python-package-v${{ env.VERSION }}
+          name: python-package-${{ env.VERSION }}
           path: dist/
 
       - name: Extract artifact (if zipped)
