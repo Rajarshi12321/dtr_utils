@@ -3,10 +3,11 @@ name: Publish Python Package
 on:
   push:
     branches:
-      - main  # Runs on push to the main branch
+      - main  # Runs only on push to main branch
     paths-ignore:
       - "**/*.md"  # Ignore Markdown files
       - "**/*.txt" # Ignore text files
+ 
 
 jobs:
   check-setup-changes:
@@ -29,6 +30,7 @@ jobs:
             echo "No changes in setup.py. Skipping build."
             echo "setup_changed=false" >> $GITHUB_ENV
             echo "setup_changed=false" >> $GITHUB_OUTPUT
+          fi  # Closing the if block
 
   build-and-publish:
     needs: check-setup-changes
