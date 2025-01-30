@@ -4,9 +4,35 @@ on:
   push:
     branches:
       - main  # Runs on push to the main branch
+    paths-ignore:
+      - "**/*.md"  # Ignore Markdown files
+      - "**/*.txt" # Ignore text files
 
 jobs:
+  check-setup-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      setup_changed: ${{ steps.check.outputs.setup_changed }}  # Pass result to next jobs
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check for changes in setup.py
+        id: check
+        run: |
+          if git diff --name-only HEAD^ HEAD | grep -q 'setup.py'; then
+            echo "setup.py has changed."
+            echo "setup_changed=true" >> $GITHUB_ENV
+            echo "setup_changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "No changes in setup.py. Skipping build."
+            echo "setup_changed=false" >> $GITHUB_ENV
+            echo "setup_changed=false" >> $GITHUB_OUTPUT
+
   build-and-publish:
+    needs: check-setup-changes
+    if: needs.check-setup-changes.outputs.setup_changed == 'true'  # Only run if setup.py changed
     runs-on: ubuntu-latest
     outputs:
       package_version: ${{ env.PACKAGE_VERSION }}  # Pass version to next job
@@ -29,7 +55,7 @@ jobs:
         id: get_version
         run: |
           VERSION=$(python extract_version.py)
-          echo "PACKAGE_VERSION=$VERSION" >> $GITHUB_ENV  # Use environment file
+          echo "PACKAGE_VERSION=$VERSION" >> $GITHUB_ENV  # Store version
           echo "Extracted version: $VERSION"
 
       - name: Build the package
@@ -50,9 +76,10 @@ jobs:
 
   publish:
     needs: build-and-publish
+    if: needs.build-and-publish.outputs.package_version != ''  # Only run if a package was built
     runs-on: ubuntu-latest
     env:
-      PACKAGE_VERSION: ${{ needs.build-and-publish.outputs.package_version }}  # Retrieve version from previous job
+      PACKAGE_VERSION: ${{ needs.build-and-publish.outputs.package_version }}  # Retrieve version
 
     steps:
       - name: Download built package artifact
