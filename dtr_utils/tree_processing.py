@@ -455,6 +455,8 @@ class TreeLeafStats:
         missing = node[2]
         extra = node[3]
         common = node[1]
+        if common==0:
+            common=1
         return (
             kl_div
             + self.sd_miss * ((missing * (missing + 1)) / (2 * common))
